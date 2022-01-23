@@ -141,13 +141,11 @@ async function rb() {
         mangoGroup.loadCache(connection),
         client.getMangoAccount(mangoAccountPk, mangoGroup.dexProgramId),
       ]);
-
-
+      
       // TODO store the prices in an array to calculate volatility
 
       // Model logic
       const fairValue = mangoGroup.getPrice(marketIndex, mangoCache).toNumber();
-
 
       // TODO volatility adjustment
 
@@ -157,7 +155,6 @@ async function rb() {
         .filter((o) => o.marketIndex === marketIndex);
 
       console.log("Open orders : " + openOrders.length + ", Market : " + marketName + "-PERP")
-
 
       const perpSize = mangoAccount
         .getPerpPositionUi(marketIndex, perpMarket)
@@ -224,7 +221,6 @@ async function rb() {
             );
 
             tx.add(cancelAllInstr);
-
           }
 
           if (tx.instructions.length > 0) {
@@ -259,7 +255,6 @@ async function rb() {
             'limit',
           ); // or 'ioc' or 'postOnly'          
         }
-
     } catch (e) {
       // sleep for some time and retry
       console.log(e);
