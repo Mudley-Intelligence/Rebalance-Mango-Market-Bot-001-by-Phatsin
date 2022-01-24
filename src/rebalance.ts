@@ -141,7 +141,7 @@ async function rb() {
         mangoGroup.loadCache(connection),
         client.getMangoAccount(mangoAccountPk, mangoGroup.dexProgramId),
       ]);
-      
+
       // TODO store the prices in an array to calculate volatility
 
       // Model logic
@@ -155,6 +155,7 @@ async function rb() {
         .filter((o) => o.marketIndex === marketIndex);
 
       console.log("Open orders : " + openOrders.length + ", Market : " + marketName + "-PERP")
+
 
       const perpSize = mangoAccount
         .getPerpPositionUi(marketIndex, perpMarket)
@@ -170,9 +171,32 @@ async function rb() {
       
       var much = false;
 
+      const decimal_ = perpMarket.minOrderSize.toString().split(".")[1].length;
+
       if (perpVal > (fxval + alter)) {
         console.log("Error: Perp value is too much!");
         much = true;
+
+        const sell_ = ((perpVal - fxval) / fairValue);
+        const sell__ = parseFloat(sell_.toFixed(decimal_));
+        
+        const bid = bids.getL2(1)[0][0];
+
+        if (action) {
+          await client.placePerpOrder(
+            mangoGroup,
+            mangoAccount,
+            mangoGroup.mangoCache,
+            perpMarket,
+            payer,
+            'buy', // or 'sell'
+            bid,
+            sell__,
+            'limit',
+          ); // or 'ioc' or 'postOnly'          
+        } else {
+          console.log("Want to sell " + sell__ + " " + marketName)
+        }
       }
 
       var few = false;
@@ -180,6 +204,29 @@ async function rb() {
       if (perpVal < (fxval - alter)) {
         console.log("Error: Perp value is too few!");
         few = true;
+
+        const buy_ = (fxval - perpVal) / fairValue;
+        const buy__ = parseFloat(buy_.toFixed(decimal_));
+        
+        const ask = asks.getL2(1)[0][0];
+
+        if (action) {
+          await client.placePerpOrder(
+            mangoGroup,
+            mangoAccount,
+            mangoGroup.mangoCache,
+            perpMarket,
+            payer,
+            'buy', // or 'sell'
+            ask,
+            buy__,
+            'limit',
+          ); // or 'ioc' or 'postOnly'
+
+        } else {
+          console.log("Want to buy " + buy__ + " " + marketName)
+        }
+
       }
 
         if (alter != 0 && fxval != 0) {
@@ -191,8 +238,8 @@ async function rb() {
 
         const sellPrice = (fxval / perpSize) + (alter / perpSize);
         const buyPrice = (fxval / perpSize) - (alter / perpSize);
-        const sellSize = parseFloat((alter / sellPrice).toFixed(2));
-        const buySize = parseFloat((alter / buyPrice).toFixed(2));
+        const sellSize = parseFloat((alter / sellPrice).toFixed(decimal_));
+        const buySize = parseFloat((alter / buyPrice).toFixed(decimal_));
   
         if (sellSize == 0 || buySize == 0) {
           console.log("Error: Size error!");
@@ -221,6 +268,7 @@ async function rb() {
             );
 
             tx.add(cancelAllInstr);
+
           }
 
           if (tx.instructions.length > 0) {
@@ -255,6 +303,7 @@ async function rb() {
             'limit',
           ); // or 'ioc' or 'postOnly'          
         }
+
     } catch (e) {
       // sleep for some time and retry
       console.log(e);
@@ -315,5 +364,3 @@ process.on('unhandledRejection', function (err, promise) {
 });
 
 startMarketMaker();
-
-//KEYPAIR=~/.config/solana/id.json GROUP=mainnet.1 MANGO_ACCOUNT_NAME=Phatsin.lk MARKET=SOL INTERVAL=5000 FIXED_VALUE=8 ALTER=5 ACTION=1 yarn rebalance
