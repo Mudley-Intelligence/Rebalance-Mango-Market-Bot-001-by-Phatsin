@@ -316,4 +316,4 @@ process.on('unhandledRejection', function (err, promise) {
 
 startMarketMaker();
 
-//KEYPAIR=~/.config/solana/id.json GROUP=mainnet.1 MANGO_ACCOUNT_NAME=Phatsin.lk MARKET=SOL INTERVAL=5000 FIXED_VALUE=8 ALTER=5 ACTION=1 yarn rb
+//KEYPAIR=~/.config/solana/id.json GROUP=mainnet.1 MANGO_ACCOUNT_NAME=Phatsin.lk MARKET=SOL INTERVAL=5000 FIXED_VALUE=8 ALTER=5 ACTION=1 yarn rebalance
