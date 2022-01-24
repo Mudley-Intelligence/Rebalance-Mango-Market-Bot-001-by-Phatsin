@@ -203,3 +203,9 @@ cd mango-client-v3
 yarn install
 KEYPAIR=~/.config/solana/id.json GROUP=mainnet.1 MANGO_ACCOUNT_NAME=mm MARKET=ADA INTERVAL=5000 SIZE_PERC=0.05 CHARGE=0.0015 LEAN_COEFF=0.00075 yarn mm
 ```
+### Rebalance Example
+```shell
+git clone https://github.com/Phatsin/mango-client-v3.git
+cd mango-client-v3
+yarn install
+KEYPAIR=~/.config/solana/id.json GROUP=mainnet.1 MANGO_ACCOUNT_NAME=Phatsin.lk MARKET=SOL INTERVAL=5000 FIXED_VALUE=8 ALTER=5 ACTION=1 yarn rebalance
