@@ -110,6 +110,9 @@ async function rebalance() {
   while (control.isRunning) {
     try {
 
+      console.log("Fixed value        : " + fxval + " USDC")
+      console.log("Alter              : " + alter + " USDC")
+
       const [mangoCache, mangoAccount]: [
         MangoCache,
         MangoAccount,
@@ -150,6 +153,8 @@ async function rebalance() {
 
       var much = false;
 
+      var balan_ = 0;
+
       if (balVal > (fxval + alter)) {
         console.log("Balance value is greater than " + (fxval + alter) + " USDC");
         much = true;
@@ -159,6 +164,8 @@ async function rebalance() {
         
         let bids = await spotMarket.loadBids(connection);
         const bid = bids.getL2(1)[0][0]
+
+        balan_ = balan - sell__;
   
         if (action) {
           await client.placeSpotOrder2(
@@ -173,7 +180,7 @@ async function rebalance() {
           ); // or 'ioc' or 'postOnly'
           
         } else {
-          console.log("Want to sell " + sell__ + " " + marketName.toUpperCase())
+          console.log("Will sell " + sell__ + " " + marketName.toUpperCase() + " at market price.")
         }
       }
 
@@ -189,6 +196,8 @@ async function rebalance() {
         let asks = await spotMarket.loadAsks(connection);
         const ask = asks.getL2(1)[0][0];
   
+        balan_ = balan + buy__;
+
         if (action) {
           await client.placeSpotOrder2(
             mangoGroup,
@@ -202,7 +211,7 @@ async function rebalance() {
           ); // or 'ioc' or 'postOnly'
           
         } else {
-          console.log("Want to buy " + buy__ + " " + marketName.toUpperCase())
+          console.log("Will buy " + buy__ + " " + marketName.toUpperCase() + " at market price.");
         }
       }
 
@@ -215,6 +224,7 @@ async function rebalance() {
         if(!alter) console.log("Error: ALTER")
       }
 
+
       const sellPrice = (fxval / balan) + (alter / balan);
       const buyPrice = (fxval / balan) - (alter / balan);
       const sellSize = parseFloat((alter / sellPrice).toFixed(decimal_));
@@ -224,6 +234,26 @@ async function rebalance() {
         console.log("Error: Size error!");
         return
       }
+
+      if (!action) {
+
+        if (!balan_) balan_ = balan
+
+        const sellPrice_ = (fxval / balan_) + (alter / balan_);
+        const buyPrice_ = (fxval / balan_) - (alter / balan_);
+        const sellSize_ = parseFloat((alter / sellPrice).toFixed(decimal_));
+        const buySize_ = parseFloat((alter / buyPrice).toFixed(decimal_));
+
+        if (sellSize_ == 0 || buySize_ == 0) {
+          console.log("Error: Size error!");
+          return
+        }
+
+        console.log("Will sell " + sellSize_ + " " + marketName.toUpperCase() + " at " + sellPrice_);
+        console.log("Will buy " + buySize_ +  " " + marketName.toUpperCase() + " at " + buyPrice_);        
+      }
+
+
 
       if (openOrders.length != 0 ) {
         if (openOrders.length != 2 && action && !much && !few) {
@@ -269,6 +299,11 @@ async function rebalance() {
         ); // or 'ioc' or 'postOnly'
 
       }
+
+      if (!action) {
+        console.log("######### The robot is no action!! #########")
+      }
+
 
     } catch (e) {
       // sleep for some time and retry
