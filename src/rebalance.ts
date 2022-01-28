@@ -106,8 +106,9 @@ async function rebalance() {
     console.log('Caught keyboard interrupt.');
     control.isRunning = false;
   });
-
+  var loop = 0;
   while (control.isRunning) {
+    loop++;
     try {
 
       console.log("Fixed value        : " + fxval + " USDC")
@@ -152,68 +153,85 @@ async function rebalance() {
       const decimal_ = spotMarket.minOrderSize.toString().split(".")[1].length;
 
       var much = false;
+      var few = false;
 
       var balan_ = 0;
 
-      if (balVal > (fxval + alter)) {
-        console.log("Balance value is greater than " + (fxval + alter) + " USDC");
-        much = true;
+      if (!action || (action && loop == 0)) {
+        if (balVal > (fxval + alter)) {
+          console.log("Balance value is greater than " + (fxval + alter) + " USDC");
+          much = true;
 
-        const sell_ = ((balVal - fxval) / fairValue);
-        const sell__ = parseFloat(sell_.toFixed(decimal_));
-        
-        let bids = await spotMarket.loadBids(connection);
-        const bid = bids.getL2(1)[0][0]
-
-        balan_ = balan - sell__;
-  
-        if (action) {
-          await client.placeSpotOrder2(
-            mangoGroup,
-            mangoAccount,
-            spotMarket,
-            owner,
-            'sell',
-            bid,
-            sell__,
-            'limit',
-          ); // or 'ioc' or 'postOnly'
+          const sell_ = ((balVal - fxval) / fairValue);
+          const sell__ = parseFloat(sell_.toFixed(decimal_));
           
-        } else {
-          console.log("Will sell " + sell__ + " " + marketName.toUpperCase() + " at market price.")
+          let bids = await spotMarket.loadBids(connection);
+          const bid = bids.getL2(1)[0][0]
+
+          balan_ = balan - sell__;
+    
+          if (action) {
+            await client.placeSpotOrder2(
+              mangoGroup,
+              mangoAccount,
+              spotMarket,
+              owner,
+              'sell',
+              bid,
+              sell__,
+              'limit',
+            ); // or 'ioc' or 'postOnly'
+            
+            const openOrders = await mangoAccount.loadSpotOrdersForMarket(
+              connection,
+              spotMarket,
+              spotMarketConfig.marketIndex,
+            );
+          
+
+
+          } else {
+            console.log("Will sell " + sell__ + " " + marketName.toUpperCase() + " at market price.")
+          }
         }
+
+        if (balVal < (fxval - alter)) {
+          console.log("Balance value is less than " + (fxval - alter) + " USDC");
+          few = true;
+
+          const buy_ = (fxval - balVal) / fairValue;
+          const buy__ = parseFloat(buy_.toFixed(decimal_));
+          
+          let asks = await spotMarket.loadAsks(connection);
+          const ask = asks.getL2(1)[0][0];
+    
+          balan_ = balan + buy__;
+
+          if (action) {
+            await client.placeSpotOrder2(
+              mangoGroup,
+              mangoAccount,
+              spotMarket,
+              owner,
+              'buy',
+              ask,
+              buy__,
+              'limit',
+            ); // or 'ioc' or 'postOnly'
+            
+            const openOrders = await mangoAccount.loadSpotOrdersForMarket(
+              connection,
+              spotMarket,
+              spotMarketConfig.marketIndex,
+            );
+          
+
+          } else {
+            console.log("Will buy " + buy__ + " " + marketName.toUpperCase() + " at market price.");
+          }
+        }        
       }
 
-      var few = false;
-
-      if (balVal < (fxval - alter)) {
-        console.log("Balance value is less than " + (fxval - alter) + " USDC");
-        few = true;
-
-        const buy_ = (fxval - balVal) / fairValue;
-        const buy__ = parseFloat(buy_.toFixed(decimal_));
-        
-        let asks = await spotMarket.loadAsks(connection);
-        const ask = asks.getL2(1)[0][0];
-  
-        balan_ = balan + buy__;
-
-        if (action) {
-          await client.placeSpotOrder2(
-            mangoGroup,
-            mangoAccount,
-            spotMarket,
-            owner,
-            'buy',
-            ask,
-            buy__,
-            'limit',
-          ); // or 'ioc' or 'postOnly'
-          
-        } else {
-          console.log("Will buy " + buy__ + " " + marketName.toUpperCase() + " at market price.");
-        }
-      }
 
       ///////////////////////////////////////////
 
