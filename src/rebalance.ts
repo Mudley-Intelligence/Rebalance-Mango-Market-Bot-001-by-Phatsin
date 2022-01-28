@@ -1,67 +1,49 @@
-import {
-  Cluster,
-  Config,
-  getPerpMarketByBaseSymbol,
-  PerpMarketConfig,
-} from './config';
-import configFile from './ids.json';
-import {
-  Account,
-  Commitment,
-  Connection,
-  PublicKey,
-  Transaction,
-} from '@solana/web3.js';
-import fs from 'fs';
-import os from 'os';
+import * as os from 'os';
+import * as fs from 'fs';
 import { MangoClient } from './client';
-import {
-  BookSide,
-  makeCancelAllPerpOrdersInstruction,
-  makePlacePerpOrderInstruction,
-  MangoCache,
-  ONE_BN,
-  sleep,
-} from './index';
-import { BN } from 'bn.js';
+import { Account, Commitment, Connection, PublicKey } from '@solana/web3.js';
+import configFile from './ids.json';
+import { Config, getMarketByBaseSymbolAndKind, Cluster } from './config';
+import { Market } from '@project-serum/serum';
+import { MangoCache, sleep } from './index';
 import MangoAccount from './MangoAccount';
-import MangoGroup from './MangoGroup';
-import PerpMarket from './PerpMarket';
+import RootBank from './RootBank';
 
 const interval = parseInt(process.env.INTERVAL || '10000');
 const control = { isRunning: true, interval: interval };
+const config = new Config(configFile);
+const groupName = process.env.GROUP || 'devnet.2';
+const mangoAccountName = process.env.MANGO_ACCOUNT_NAME;
 
-async function rb() {
-  // load mango group and clients
-  const config = new Config(configFile);
-  const groupName = process.env.GROUP || 'devnet.2';
-  const mangoAccountName = process.env.MANGO_ACCOUNT_NAME;
+const payer = new Account(
+  JSON.parse(
+    fs.readFileSync(
+      process.env.KEYPAIR || os.homedir() + '/.config/solana/id.json',
+      'utf-8',
+    ),
+  ),
+);
 
-  const groupIds = config.getGroupWithName(groupName);
-  if (!groupIds) {
+const alter = parseFloat(process.env.ALTER || '0');
+const fxval = parseFloat(process.env.FIXED_VALUE || '0');
+const action = parseFloat(process.env.ACTION || '0');
+
+async function rebalance() {
+  // setup client
+
+  const groupConfig = config.getGroupWithName(groupName);
+  if (!groupConfig) {
     throw new Error(`Group ${groupName} not found`);
   }
-  const cluster = groupIds.cluster as Cluster;
-  const mangoProgramId = groupIds.mangoProgramId;
-  const mangoGroupKey = groupIds.publicKey;
-
-  const payer = new Account(
-    JSON.parse(
-      fs.readFileSync(
-        process.env.KEYPAIR || os.homedir() + '/.config/solana/id.json',
-        'utf-8',
-      ),
-    ),
-  );
-  console.log(`Payer: ${payer.publicKey.toBase58()}`);
+  const cluster = groupConfig.cluster as Cluster;
 
   const connection = new Connection(
     process.env.ENDPOINT_URL || config.cluster_urls[cluster],
     'processed' as Commitment,
   );
-  const client = new MangoClient(connection, mangoProgramId);
-
-  const mangoGroup = await client.getMangoGroup(mangoGroupKey);
+  const client = new MangoClient(connection, groupConfig.mangoProgramId);
+  
+  const mangoGroup = await client.getMangoGroup(groupConfig.publicKey);
 
   const ownerAccounts = await client.getMangoAccountsForOwner(
     mangoGroup,
@@ -91,268 +73,217 @@ async function rb() {
     }
   }
 
-  // TODO make it be able to quote all markets
+  const owner = new Account(
+    JSON.parse(
+      fs.readFileSync(
+        process.env.KEYPAIR || os.homedir() + '/.config/solana/id.json',
+        'utf-8',
+      ),
+    ),
+  );
+
+  // load group & market
+
   const marketName = process.env.MARKET;
   if (!marketName) {
     throw new Error('Please add env variable MARKET');
   }
 
-  const perpMarketConfig = getPerpMarketByBaseSymbol(
-    groupIds,
+  const spotMarketConfig = getMarketByBaseSymbolAndKind(
+    groupConfig,
     marketName.toUpperCase(),
-  ) as PerpMarketConfig;
-  const marketIndex = perpMarketConfig.marketIndex;
-  const perpMarket = await client.getPerpMarket(
-    perpMarketConfig.publicKey,
-    perpMarketConfig.baseDecimals,
-    perpMarketConfig.quoteDecimals,
+    'spot',
   );
 
-  const alter = parseFloat(process.env.ALTER || '0');
-  const fxval = parseFloat(process.env.FIXED_VALUE || '0');
-  const action = parseFloat(process.env.ACTION || '0');
+  const spotMarket = await Market.load(
+    connection,
+    spotMarketConfig.publicKey,
+    undefined,
+    groupConfig.serumProgramId,
+  );
 
   process.on('SIGINT', function () {
-    console.log('Caught keyboard interrupt. Canceling orders');
+    console.log('Caught keyboard interrupt.');
     control.isRunning = false;
-    onExit(
-      client,
-      payer,
-      mangoProgramId,
-      mangoGroup,
-      perpMarket,
-      mangoAccountPk,
-    );
   });
 
   while (control.isRunning) {
     try {
-      // get fresh data
-      // get orderbooks, get perp markets, caches
-      // TODO load pyth oracle itself for most accurate prices
-      const [bids, asks, mangoCache, mangoAccount]: [
-        BookSide,
-        BookSide,
+
+      const [mangoCache, mangoAccount]: [
         MangoCache,
         MangoAccount,
       ] = await Promise.all([
-        perpMarket.loadBids(connection),
-        perpMarket.loadAsks(connection),
         mangoGroup.loadCache(connection),
         client.getMangoAccount(mangoAccountPk, mangoGroup.dexProgramId),
       ]);
 
-      // TODO store the prices in an array to calculate volatility
+      console.log("Market             : " + marketName.toUpperCase() + " SPOT");
+      console.log("Minimum order size : " + spotMarket.minOrderSize.toString())
 
-      // Model logic
-      const fairValue = mangoGroup.getPrice(marketIndex, mangoCache).toNumber();
-
-      // TODO volatility adjustment
-
-      // TODO use order book to requote if size has changed
-      const openOrders = mangoAccount
-        .getPerpOpenOrders()
-        .filter((o) => o.marketIndex === marketIndex);
-
-      console.log("Open orders : " + openOrders.length + ", Market : " + marketName + "-PERP")
-
-
-      const perpSize = mangoAccount
-        .getPerpPositionUi(marketIndex, perpMarket)
-
-      console.log("Perp size   : " + perpSize)
-
-      const perpVal = perpSize * fairValue;
-      console.log("Perp value  : " + perpVal)
-      console.log("Fair value  : " + fairValue)
-//console.log(equity)
-//console.log(openOrders.length)
-//console.log(getSpotVal)
+      const fairValue = mangoGroup.getPrice(spotMarketConfig.marketIndex, mangoCache).toNumber();
       
+      console.log("Fair value         : " + fairValue)
+
+      const openOrders = await mangoAccount.loadSpotOrdersForMarket(
+        connection,
+        spotMarket,
+        spotMarketConfig.marketIndex,
+      );
+    
+      console.log("Open orders        : " + openOrders.length);
+
+      const net = mangoAccount.getUiDeposit(mangoCache.rootBankCache[spotMarketConfig.marketIndex], mangoGroup, spotMarketConfig.marketIndex);
+
+      const balan =  parseFloat(net.toString());
+
+      console.log("Balance            : " + balan + " " + marketName.toUpperCase());
+      
+      const balVal = balan * fairValue;
+
+      console.log("Balance value      : " + balVal + " USDC");
+
+      // Fetch orderbooks
+      //////////////////////////////////////////////////
+
+      const decimal_ = spotMarket.minOrderSize.toString().split(".")[1].length;
+
       var much = false;
 
-      const decimal_ = perpMarket.minOrderSize.toString().split(".")[1].length;
-
-      if (perpVal > (fxval + alter)) {
-        console.log("Error: Perp value is too much!");
+      if (balVal > (fxval + alter)) {
+        console.log("Balance value is greater than " + (fxval + alter) + " USDC");
         much = true;
 
-        const sell_ = ((perpVal - fxval) / fairValue);
+        const sell_ = ((balVal - fxval) / fairValue);
         const sell__ = parseFloat(sell_.toFixed(decimal_));
         
-        const bid = bids.getL2(1)[0][0];
-
+        let bids = await spotMarket.loadBids(connection);
+        const bid = bids.getL2(1)[0][0]
+  
         if (action) {
-          await client.placePerpOrder(
+          await client.placeSpotOrder2(
             mangoGroup,
             mangoAccount,
-            mangoGroup.mangoCache,
-            perpMarket,
-            payer,
-            'buy', // or 'sell'
+            spotMarket,
+            owner,
+            'sell',
             bid,
             sell__,
             'limit',
-          ); // or 'ioc' or 'postOnly'          
+          ); // or 'ioc' or 'postOnly'
+          
         } else {
-          console.log("Want to sell " + sell__ + " " + marketName)
+          console.log("Want to sell " + sell__ + " " + marketName.toUpperCase())
         }
       }
 
       var few = false;
 
-      if (perpVal < (fxval - alter)) {
-        console.log("Error: Perp value is too few!");
+      if (balVal < (fxval - alter)) {
+        console.log("Balance value is less than " + (fxval - alter) + " USDC");
         few = true;
 
-        const buy_ = (fxval - perpVal) / fairValue;
+        const buy_ = (fxval - balVal) / fairValue;
         const buy__ = parseFloat(buy_.toFixed(decimal_));
         
+        let asks = await spotMarket.loadAsks(connection);
         const ask = asks.getL2(1)[0][0];
-
+  
         if (action) {
-          await client.placePerpOrder(
+          await client.placeSpotOrder2(
             mangoGroup,
             mangoAccount,
-            mangoGroup.mangoCache,
-            perpMarket,
-            payer,
-            'buy', // or 'sell'
+            spotMarket,
+            owner,
+            'buy',
             ask,
             buy__,
             'limit',
           ); // or 'ioc' or 'postOnly'
-
+          
         } else {
-          console.log("Want to buy " + buy__ + " " + marketName)
+          console.log("Want to buy " + buy__ + " " + marketName.toUpperCase())
         }
-
       }
 
-        if (alter != 0 && fxval != 0) {
+      ///////////////////////////////////////////
 
-        }else{
-          if(!fxval) console.log("Error: FIXED_VALUE");
-          if(!alter) console.log("Error: ALTER")
-        }
+      if (alter != 0 && fxval != 0) {
 
-        const sellPrice = (fxval / perpSize) + (alter / perpSize);
-        const buyPrice = (fxval / perpSize) - (alter / perpSize);
-        const sellSize = parseFloat((alter / sellPrice).toFixed(decimal_));
-        const buySize = parseFloat((alter / buyPrice).toFixed(decimal_));
-  
-        if (sellSize == 0 || buySize == 0) {
-          console.log("Error: Size error!");
-          return
-        }
-//console.log(bidPrice);
-//console.log(askPrice);
-//console.log(bidSize);
-//console.log(askSize);
+      }else{
+        if(!fxval) console.log("Error: FIXED_VALUE");
+        if(!alter) console.log("Error: ALTER")
+      }
 
-        // Start building the transaction
-        const tx = new Transaction();
-        if (openOrders.length != 0 ) {
-          if (openOrders.length != 2 && action && !much && !few) {
-            // cancel all, requote
-            console.log("test");
-            const cancelAllInstr = makeCancelAllPerpOrdersInstruction(
-              mangoProgramId,
-              mangoGroup.publicKey,
-              mangoAccount.publicKey,
-              payer.publicKey,
-              perpMarket.publicKey,
-              perpMarket.bids,
-              perpMarket.asks,
-              new BN(20),
+      const sellPrice = (fxval / balan) + (alter / balan);
+      const buyPrice = (fxval / balan) - (alter / balan);
+      const sellSize = parseFloat((alter / sellPrice).toFixed(decimal_));
+      const buySize = parseFloat((alter / buyPrice).toFixed(decimal_));
+
+      if (sellSize == 0 || buySize == 0) {
+        console.log("Error: Size error!");
+        return
+      }
+
+      if (openOrders.length != 0 ) {
+        if (openOrders.length != 2 && action && !much && !few) {
+          // cancel all, requote
+
+          const rootBanks = await mangoGroup.loadRootBanks(client.connection);
+
+          for (const order of openOrders) {
+            await client.cancelSpotOrder(
+              mangoGroup,
+              mangoAccount,
+              owner,
+              spotMarket,
+              order,
             );
-
-            tx.add(cancelAllInstr);
-
           }
-
-          if (tx.instructions.length > 0) {
-            const txid = await client.sendTransaction(tx, payer, []);
-          }          
         }
+      }
 
-        if (openOrders.length == 0 && action && !much && !few) {
-          // Place order
+      if (openOrders.length == 0 && action && !much && !few) {
+        // Place order
 
-          await client.placePerpOrder(
-            mangoGroup,
-            mangoAccount,
-            mangoGroup.mangoCache,
-            perpMarket,
-            payer,
-            'buy', // or 'sell'
-            buyPrice,
-            buySize,
-            'limit',
-          ); // or 'ioc' or 'postOnly'
+        await client.placeSpotOrder2(
+          mangoGroup,
+          mangoAccount,
+          spotMarket,
+          owner,
+          'buy',
+          buyPrice,
+          buySize,
+          'limit',
+        ); // or 'ioc' or 'postOnly'
 
-          await client.placePerpOrder(
-            mangoGroup,
-            mangoAccount,
-            mangoGroup.mangoCache,
-            perpMarket,
-            payer,
-            'sell', // or 'sell'
-            sellPrice,
-            sellSize,
-            'limit',
-          ); // or 'ioc' or 'postOnly'          
-        }
+        await client.placeSpotOrder2(
+          mangoGroup,
+          mangoAccount,
+          spotMarket,
+          owner,
+          'sell',
+          sellPrice,
+          sellSize,
+          'limit',
+        ); // or 'ioc' or 'postOnly'
+
+      }
 
     } catch (e) {
       // sleep for some time and retry
       console.log(e);
     } finally {
-      console.log(`~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`);
+      console.log(`~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`);
       await sleep(interval);
     }
   }
 }
-
-async function onExit(
-  client: MangoClient,
-  payer: Account,
-  mangoProgramId: PublicKey,
-  mangoGroup: MangoGroup,
-  perpMarket: PerpMarket,
-  mangoAccountPk: PublicKey,
-) {
-  await sleep(control.interval);
-  const mangoAccount = await client.getMangoAccount(
-    mangoAccountPk,
-    mangoGroup.dexProgramId,
-  );
-
-  const cancelAllInstr = makeCancelAllPerpOrdersInstruction(
-    mangoProgramId,
-    mangoGroup.publicKey,
-    mangoAccount.publicKey,
-    payer.publicKey,
-    perpMarket.publicKey,
-    perpMarket.bids,
-    perpMarket.asks,
-    new BN(20),
-  );
-  const tx = new Transaction();
-  tx.add(cancelAllInstr);
-
-  const txid = await client.sendTransaction(tx, payer, []);
-  console.log(`cancel successful: ${txid.toString()}`);
-
-  process.exit();
-}
-
-function startMarketMaker() {
+function startRebalance() {
   if (control.isRunning) {
-    rb().finally(startMarketMaker);
+    rebalance().finally(startRebalance);
   }
 }
-
 process.on('unhandledRejection', function (err, promise) {
   console.error(
     'Unhandled rejection (promise: ',
@@ -363,4 +294,4 @@ process.on('unhandledRejection', function (err, promise) {
   );
 });
 
-startMarketMaker();
+startRebalance();
