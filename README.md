@@ -1,10 +1,15 @@
 # Rebalance Mango Market Bot by Phatsin 
 
-Rebalance Mango Market Bot by DuPhatsin for run trading bot in Solana Mango Market Defi.
+Rebalance Mango Market Bot by MR.Phatsin for run trading bot in Solana Mango Market Defi.
 
-Thanks to Phatsin https://github.com/Phatsin for sharing. 
+Thanks to MR.Phatsin https://github.com/Phatsin for sharing. 
 
-File contain JavaScript client library for interacting with Mango Markets DEX v3.
+Please read Medium blog from MR.Phatsin for more information.
+
+https://medium.com/@phatsinloedkhanitkon/%E0%B8%A7%E0%B8%B4%E0%B8%98%E0%B8%B5%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B9%83%E0%B8%8A%E0%B9%89%E0%B8%87%E0%B8%B2%E0%B8%99-bot-rebalance-%E0%B9%80%E0%B8%8A%E0%B8%B7%E0%B9%88%E0%B8%AD%E0%B8%A1%E0%B8%95%E0%B9%88%E0%B8%AD%E0%B8%81%E0%B8%B1%E0%B8%9A-mango-markets-%E0%B8%94%E0%B9%89%E0%B8%A7%E0%B8%A2-mango-client-v3-d72ba68d8014
+
+
+This file contain JavaScript client library for interacting with Mango Markets DEX v3.
 
 [API Documentation](https://blockworks-foundation.github.io/mango-client-v3/)
 
