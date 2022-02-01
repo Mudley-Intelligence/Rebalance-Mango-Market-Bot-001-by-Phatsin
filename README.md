@@ -38,7 +38,7 @@ KEYPAIR=~/.config/solana/id.json GROUP=mainnet.1 MANGO_ACCOUNT_NAME=Phatsin.lk M
 ```
 
 ## Rebalance Example from Mudley Intelligence (window ver.)
-### Bot Installation
+### Bot Installation (window ver.)
 ```
 git clone 
 cd mango-client-v3
@@ -47,7 +47,7 @@ In scripts section change "clean": "rm -rf lib", to  "clean": "del /s lib",
 yarn install
 ```
 
-## run bot (window ver.)
+### run bot (window ver.)
 ```
 set KEYPAIR=~/.config/solana/id.json && set GROUP=mainnet.1 && set MANGO_ACCOUNT_NAME=YOUR_NAME && set MARKET=SOL INTERVAL=5000 && set FIXED_VALUE=8 && set ALTER=5 && set ACTION=1 && yarn rebalance
 ```
